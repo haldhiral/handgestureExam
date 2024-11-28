@@ -1,5 +1,7 @@
 import cv2
 import mediapipe as mp
+import time
+import numpy as np
 
 # Initialize MediaPipe Hand module
 mp_hands = mp.solutions.hands
@@ -10,11 +12,13 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 
 def count_fingers(hand_landmarks):
     """Detect the number of fingers raised."""
-    finger_tips = [8, 12, 16, 20]  # Finger tips: index, middle, ring, pinky
+    # Finger tips: index, middle, ring, pinky
+    finger_tips = [8, 12, 16, 20]
+    # Thumb tip is 4
     thumb_tip = 4
     raised_fingers = 0
 
-    # Check each finger if it's raised
+    # Count the raised fingers
     for tip in finger_tips:
         if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y:
             raised_fingers += 1
@@ -38,7 +42,18 @@ selected_answer = None
 # Initialize Webcam
 cap = cv2.VideoCapture(0)
 
+# Full screen settings
+screen_width = 1920
+screen_height = 1080
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, screen_width)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, screen_height)
+
+# Time delay before showing confirmation popup (in seconds)
+gesture_delay = 5  # 1 second delay before showing confirmation
+
 with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5) as hands:
+    last_gesture_time = time.time()  # Track the time of the last gesture detected
+
     while cap.isOpened():
         success, frame = cap.read()
         
@@ -90,10 +105,10 @@ with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5) a
 
         # Draw 4 Answer Boxes
         answer_positions = [
-            (int(w * 0.05), int(h * 0.3), int(w * 0.3), int(h * 0.4)),
-            (int(w * 0.35), int(h * 0.3), int(w * 0.6), int(h * 0.4)),
-            (int(w * 0.65), int(h * 0.3), int(w * 0.9), int(h * 0.4)),
-            (int(w * 0.05), int(h * 0.5), int(w * 0.3), int(h * 0.6)),
+            (int(w * 0.05), int(h * 0.3), int(w * 0.35), int(h * 0.4)),
+            (int(w * 0.35), int(h * 0.3), int(w * 0.65), int(h * 0.4)),
+            (int(w * 0.65), int(h * 0.3), int(w * 0.95), int(h * 0.4)),
+            (int(w * 0.05), int(h * 0.5), int(w * 0.35), int(h * 0.6)),
         ]
 
         # Draw the answer boxes
@@ -101,7 +116,7 @@ with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5) a
             color = (255, 255, 255)
             if selected_answer == i + 1:
                 color = (0, 255, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
             cv2.putText(frame, answers[i], (x1 + 10, y1 + 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
 
@@ -113,10 +128,13 @@ with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5) a
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                     fingers_count = count_fingers(hand_landmarks)
                     if fingers_count:
-                        x1, y1, x2, y2 = answer_positions[fingers_count - 1]
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
-                        selected_answer = fingers_count
-                        confirmation_needed = True
+                        # Add a delay before showing confirmation popup
+                        if time.time() - last_gesture_time > gesture_delay:
+                            x1, y1, x2, y2 = answer_positions[fingers_count - 1]
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
+                            selected_answer = fingers_count
+                            confirmation_needed = True
+                            last_gesture_time = time.time()  # Update time of last gesture
 
         # Confirm popup
         if confirmation_needed:
@@ -143,6 +161,7 @@ with mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.5) a
         if key == ord('q'):
             break
 
+        # Show the frame
         cv2.imshow("Hand Gesture Exam", frame)
 
     cap.release()
