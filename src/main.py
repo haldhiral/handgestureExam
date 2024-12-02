@@ -4,7 +4,7 @@ import face_recognition
 import mediapipe as mp
 from face_recognition_utils import load_known_faces, recognize_face
 from gesture_recognition import count_fingers
-from ui import display_welcome_screen, draw_question_and_answers
+from ui import display_welcome_screen, draw_question_and_answers, display_user_name, display_countdown
 from config import KNOWN_FACES_PATH, FACE_RECOGNITION_INTERVAL, GESTURE_DELAY
 
 # Initialize MediaPipe Hands module
@@ -16,9 +16,16 @@ def main():
     known_faces, known_face_names = load_known_faces(KNOWN_FACES_PATH)
     recognized_name = None  # Initialize name as None
     cap = cv2.VideoCapture(0)
+
+    # Set the OpenCV window to full screen
+    cv2.namedWindow("Hand Gesture Exam", cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty("Hand Gesture Exam", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
     question_index = 0
     score = 0
     confirmation_needed = False
+    countdown_started = False
+    countdown_start_time = None
     selected_answer = None
     last_gesture_time = time.time()
     gesture_delay = GESTURE_DELAY
@@ -28,7 +35,7 @@ def main():
         {"question": "Solve: 2x + 3 = 7", "answers": ["x = 1", "x = 2", "x = 3", "x = 4"], "correct": 2},
         {"question": "Find the derivative of x^2 with respect to x", "answers": ["1", "x", "2x", "x^2"], "correct": 3},
     ]
-  
+
     if not cap.isOpened():
         print("Error: Could not open webcam.")
         return
@@ -57,39 +64,68 @@ def main():
             if not recognized_name:
                 display_welcome_screen(frame, recognized_name)
             else:
+                if not countdown_started:
+                    countdown_started = True
+                    countdown_start_time = time.time()  # Start the countdown
+
+                # Calculate the remaining time
+                elapsed_time = time.time() - countdown_start_time
+                seconds_left = max(0, 3 - int(elapsed_time))  # Calculate remaining seconds
+
+                if seconds_left > 0:
+                    # Show user's name and countdown on the screen
+                    success, frame = cap.read()
+                    if not success:
+                        print("Error: Failed to capture frame.")
+                        break
+                    display_user_name(frame, recognized_name, w)
+                    display_countdown(frame, w, h, seconds_left)
+                    cv2.imshow("Hand Gesture Exam", frame)
+                    cv2.waitKey(1)  # Small delay to allow frame update
+                else:
+                    # Countdown finished, show the question and answers
+                    current_question = questions[question_index]
+                    question_text = current_question["question"]
+                    answers = current_question["answers"]
+                    correct_answer = current_question["correct"]
+                    draw_question_and_answers(frame, question_text, answers, selected_answer, w, h)
+
+                # After the countdown, continue with the quiz
                 current_question = questions[question_index]
                 question_text = current_question["question"]
                 answers = current_question["answers"]
                 correct_answer = current_question["correct"]
                 draw_question_and_answers(frame, question_text, answers, selected_answer, w, h)
 
-            # Process hand landmarks for gesture recognition if no confirmation needed
-            if not confirmation_needed:
-                results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                if results.multi_hand_landmarks:
-                    for hand_landmarks in results.multi_hand_landmarks:
-                        mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                        fingers_count = count_fingers(hand_landmarks)
-                        if fingers_count:
-                            if time.time() - last_gesture_time > gesture_delay:
-                                # Define the positions for the answers
-                                answer_positions = [
-                                    (int(w * 0.05), int(h * 0.3), int(w * 0.35), int(h * 0.4)),
-                                    (int(w * 0.35), int(h * 0.3), int(w * 0.65), int(h * 0.4)),
-                                    (int(w * 0.65), int(h * 0.3), int(w * 0.95), int(h * 0.4)),
-                                    (int(w * 0.05), int(h * 0.5), int(w * 0.35), int(h * 0.6)),
-                                ]
-                                x1, y1, x2, y2 = answer_positions[fingers_count - 1]
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
-                                selected_answer = fingers_count
-                                confirmation_needed = True
-                                last_gesture_time = time.time()
 
-            # Confirm popup
-            if confirmation_needed:
-                cv2.rectangle(frame, (int(w * 0.35), int(h * 0.7)), (int(w * 0.65), int(h * 0.8)), (0, 255, 255), -1)
-                cv2.putText(frame, "Confirm? (y/n)", (int(w * 0.37), int(h * 0.75)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+                # Process hand landmarks for gesture recognition if no confirmation needed
+                if not confirmation_needed:
+                    results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    if results.multi_hand_landmarks:
+                        for hand_landmarks in results.multi_hand_landmarks:
+                            # Draw hand skeleton
+                            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                            fingers_count = count_fingers(hand_landmarks)
+                            if fingers_count:
+                                if time.time() - last_gesture_time > gesture_delay:
+                                    # Define the positions for the answers
+                                    answer_positions = [
+                                        (int(w * 0.05), int(h * 0.3), int(w * 0.35), int(h * 0.4)),
+                                        (int(w * 0.35), int(h * 0.3), int(w * 0.65), int(h * 0.4)),
+                                        (int(w * 0.65), int(h * 0.3), int(w * 0.95), int(h * 0.4)),
+                                        (int(w * 0.05), int(h * 0.5), int(w * 0.35), int(h * 0.6)),
+                                    ]
+                                    x1, y1, x2, y2 = answer_positions[fingers_count - 1]
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
+                                    selected_answer = fingers_count
+                                    confirmation_needed = True
+                                    last_gesture_time = time.time()
+
+                # Confirm popup
+                if confirmation_needed:
+                    cv2.rectangle(frame, (int(w * 0.35), int(h * 0.7)), (int(w * 0.65), int(h * 0.8)), (0, 255, 255), -1)
+                    cv2.putText(frame, "Confirm? (y/n)", (int(w * 0.37), int(h * 0.75)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
 
             # Handle key inputs for confirmation
             key = cv2.waitKey(1) & 0xFF
@@ -115,6 +151,9 @@ def main():
 
         cap.release()
         cv2.destroyAllWindows()
+
+    # Print final score
+    print(f"Exam Completed! Your final score is: {score}/{len(questions)}")
 
 if __name__ == "__main__":
     main()
