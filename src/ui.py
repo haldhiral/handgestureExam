@@ -1,6 +1,27 @@
 import cv2
 import time
 
+import requests
+
+def send_grade(user, score, total_question):
+    # Define the PHP API URL
+    api_url = "http://localhost/onlinetest/api/grades"
+    
+    # Prepare the data
+    data = {
+        "user": user,
+        "score": score,
+        "total_question": total_question
+    }
+
+    
+    response = requests.post(api_url, json=data)
+
+    if response.status_code == 201:
+        print("Grade successfully submitted!")
+    else:
+        print("Failed to submit grade:", response.json())
+
 def display_welcome_screen(frame, recognized_name):
     if not recognized_name:
         cv2.putText(frame, "Welcome to Smart Exam System", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)

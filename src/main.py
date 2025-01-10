@@ -2,14 +2,31 @@ import cv2
 import time
 import face_recognition
 import mediapipe as mp
+import requests
 from face_recognition_utils import load_known_faces, recognize_face
 from gesture_recognition import count_fingers
-from ui import display_welcome_screen, draw_question_and_answers, display_user_name, display_countdown
+from ui import display_welcome_screen, draw_question_and_answers, display_user_name, display_countdown, send_grade
 from config import KNOWN_FACES_PATH, FACE_RECOGNITION_INTERVAL, GESTURE_DELAY
 
 # Initialize MediaPipe Hands module
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
+
+# API URL for fetching the questions
+API_URL = "http://localhost/onlinetest/api/exams"
+
+def fetch_exam_data():
+    """Fetch questions from the API"""
+    try:
+        response = requests.post(API_URL)
+        if response.status_code == 200:
+            return response.json()  # Return the JSON data from the API
+        else:
+            print(f"Failed to fetch data. Status Code: {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return []
 
 def main():
     # Load known faces
@@ -30,11 +47,11 @@ def main():
     last_gesture_time = time.time()
     gesture_delay = GESTURE_DELAY
 
-    # Questions for the quiz
-    questions = [
-        {"question": "Solve: 2x + 3 = 7", "answers": ["x = 1", "x = 2", "x = 3", "x = 4"], "correct": 2},
-        {"question": "Find the derivative of x^2 with respect to x", "answers": ["1", "x", "2x", "x^2"], "correct": 3},
-    ]
+    # Fetch questions from the API
+    questions = fetch_exam_data()
+    if not questions:
+        print("No questions available. Exiting...")
+        return
 
     if not cap.isOpened():
         print("Error: Could not open webcam.")
@@ -153,6 +170,7 @@ def main():
         cv2.destroyAllWindows()
 
     # Print final score
+    send_grade(recognized_name, score, len(questions))
     print(f"Exam Completed! Your final score is: {score}/{len(questions)}")
 
 if __name__ == "__main__":
